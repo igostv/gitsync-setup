@@ -124,5 +124,34 @@ Invoke-Step "Устанавливаем плагин МержВетки из $Pl
 }
 
 # ---------------------------------------------------------------------------
+# 3. Шаблоны gitsync.ps1 и env.ps1
+# ---------------------------------------------------------------------------
+Invoke-Step "Копируем файлы запуска в проект..." {
+    $RepoBase = if ($PSScriptRoot) { $PSScriptRoot } else { $null }
+    $RawBase  = 'https://raw.githubusercontent.com/igostv/gitsync-setup/master'
+
+    function Copy-Template([string]$Name) {
+        $Dest = Join-Path $ProjectRoot $Name
+        if (Test-Path $Dest) {
+            Write-Host "Пропущен (уже существует): $Dest"
+            return
+        }
+
+        if ($RepoBase) {
+            Copy-Item (Join-Path $RepoBase $Name) $Dest
+        } else {
+            (irm "$RawBase/$Name") | Set-Content $Dest -Encoding UTF8
+        }
+        Write-Host "Создан: $Dest"
+    }
+
+    Copy-Template 'gitsync.ps1'
+    Copy-Template 'env.ps1'
+
+    Write-Host ""
+    Write-Host "  -> Заполните в env.ps1: GITSYNC_STORAGE_PATH, GITSYNC_STORAGE_USER, GITSYNC_STORAGE_PASSWORD, GITSYNC_V8VERSION"
+}
+
+# ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "Готово. Теперь можно запускать gitsync.ps1 в проекте."
+Write-Host "Готово. Заполните env.ps1 и запускайте .\gitsync.ps1"
