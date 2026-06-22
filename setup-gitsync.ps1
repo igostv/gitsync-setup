@@ -92,7 +92,7 @@ Invoke-Step "Устанавливаем плагин МержВетки из $Pl
         throw "gitsync.bat не найден в $ProjectRoot — убедитесь, что шаг 1 завершился успешно."
     }
 
-    $env:GITSYNC_PLUGINS_PATH = Join-Path $ProjectRoot '.gitsync\plugins'
+    $env:GITSYNC_PLUGINS_PATH = Join-Path $ProjectRoot 'oscript_modules'
 
     $Tmp = Join-Path $env:TEMP ("gitsync-plugin-" + [System.IO.Path]::GetRandomFileName())
     try {
@@ -107,8 +107,13 @@ Invoke-Step "Устанавливаем плагин МержВетки из $Pl
             $ospx = Get-ChildItem $Tmp -Filter '*.ospx' | Select-Object -First 1
             if (-not $ospx) { throw "ospx-пакет не найден после opm build" }
 
-            & $gitsync plugins install -f $ospx.FullName
-            if ($LASTEXITCODE -ne 0) { throw "gitsync plugins install завершился с кодом $LASTEXITCODE" }
+            Push-Location $ProjectRoot
+            try {
+                opm install -l -f $ospx.FullName
+                if ($LASTEXITCODE -ne 0) { throw "opm install plugin завершился с кодом $LASTEXITCODE" }
+            } finally {
+                Pop-Location
+            }
         } finally {
             Pop-Location
         }
@@ -116,10 +121,12 @@ Invoke-Step "Устанавливаем плагин МержВетки из $Pl
         if (Test-Path $Tmp) { Remove-Item -Recurse -Force $Tmp }
     }
 
-    & $gitsync plugins enable merge-branch
-    if ($LASTEXITCODE -ne 0) { throw "gitsync plugins enable завершился с кодом $LASTEXITCODE" }
+    foreach ($plugin in @('merge-branch', 'check-authors', 'check-comments', 'sync-remote', 'use-ibcmd')) {
+        & $gitsync plugins enable $plugin
+        if ($LASTEXITCODE -ne 0) { throw "gitsync plugins enable $plugin завершился с кодом $LASTEXITCODE" }
+    }
 
-    Write-Host "Плагин установлен и включён:"
+    Write-Host "Плагины установлены и включены:"
     & $gitsync plugins list
 }
 
