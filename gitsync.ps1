@@ -1,4 +1,4 @@
-$utf8 = [System.Text.Encoding]::UTF8
+﻿$utf8 = [System.Text.Encoding]::UTF8
 $OutputEncoding = $utf8
 [Console]::InputEncoding = $utf8
 [Console]::OutputEncoding = $utf8

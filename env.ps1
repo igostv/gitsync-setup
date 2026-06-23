@@ -1,4 +1,4 @@
-$env:LOGOS_CONFIG = 'logger.rootLogger=INFO'
+﻿$env:LOGOS_CONFIG = 'logger.rootLogger=INFO'
 
 $env:GITSYNC_STORAGE_PATH = ''  # tcp://host/repo
 $env:GITSYNC_STORAGE_USER = ''
