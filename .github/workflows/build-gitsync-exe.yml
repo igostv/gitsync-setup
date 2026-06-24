@@ -1,0 +1,123 @@
+name: Build standalone gitsync.exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/gitsync-windows-build-4sn9an
+
+jobs:
+  build:
+    name: Build gitsync.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # SSH-ремоуты заменяем на HTTPS, чтобы git clone работал без ключей в CI
+      - name: Use HTTPS instead of SSH for GitHub
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Install OneScript
+        run: choco install onescript --yes --no-progress
+
+      - name: Verify OneScript
+        shell: pwsh
+        run: |
+          $oscript = (Get-Command oscript -ErrorAction Stop).Source
+          Write-Host "oscript: $oscript"
+          oscript --version
+          opm --version
+
+      - name: Install gitsync and plugins
+        shell: pwsh
+        run: |
+          $buildDir = "$env:RUNNER_TEMP\gitsync-build"
+          New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+          .\setup-gitsync.ps1 -ProjectRoot $buildDir
+          "GITSYNC_BUILD_DIR=$buildDir" | Add-Content $env:GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Prepare launcher bundle
+        shell: pwsh
+        run: |
+          $buildDir = $env:GITSYNC_BUILD_DIR
+
+          # Ищем реальный oscript.exe (не shim chocolatey)
+          $oscriptExe = $null
+          $candidates = @(
+            'C:\Program Files\OneScript\oscript.exe',
+            'C:\Program Files (x86)\OneScript\oscript.exe',
+            'C:\tools\oscript\oscript.exe'
+          )
+          foreach ($c in $candidates) {
+            if (Test-Path $c) { $oscriptExe = $c; break }
+          }
+          if (-not $oscriptExe) {
+            # Fallback: ищем в lib chocolatey
+            $found = Get-ChildItem 'C:\ProgramData\chocolatey\lib\onescript' `
+                       -Recurse -Filter 'oscript.exe' -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+            if ($found) { $oscriptExe = $found.FullName }
+          }
+          if (-not $oscriptExe) {
+            throw "Не удалось найти реальный oscript.exe"
+          }
+          $oscriptDir = Split-Path $oscriptExe -Parent
+          Write-Host "Используем oscript из: $oscriptDir"
+
+          # Создаём структуру bundle_src/
+          $bundleSrc = 'launcher\bundle_src'
+          Remove-Item $bundleSrc -Recurse -Force -ErrorAction SilentlyContinue
+
+          # oscript/ — бинарник и его DLL
+          $oscriptDest = "$bundleSrc\oscript"
+          New-Item -ItemType Directory -Force -Path $oscriptDest | Out-Null
+          Get-ChildItem $oscriptDir | Copy-Item -Destination $oscriptDest -Recurse -Force
+          Write-Host ("oscript files: " + (Get-ChildItem $oscriptDest -Recurse -File | Measure-Object).Count)
+
+          # modules/ — установленные модули gitsync
+          $modulesDest = "$bundleSrc\modules"
+          New-Item -ItemType Directory -Force -Path $modulesDest | Out-Null
+          Get-ChildItem "$buildDir\oscript_modules" |
+            Copy-Item -Destination $modulesDest -Recurse -Force
+          Write-Host ("module files: " + (Get-ChildItem $modulesDest -Recurse -File | Measure-Object).Count)
+
+          # bundle_hash.txt — используем короткий git-хеш коммита
+          $hash = (git rev-parse --short=16 HEAD).Trim()
+          Write-Host "Bundle hash: $hash"
+          [System.IO.File]::WriteAllText(
+            (Resolve-Path 'launcher' | Select-Object -ExpandProperty Path) + '\bundle_hash.txt',
+            $hash,
+            [System.Text.Encoding]::UTF8
+          )
+
+          # bundle.zip
+          $zipDest = 'launcher\bundle.zip'
+          if (Test-Path $zipDest) { Remove-Item $zipDest }
+          Compress-Archive -Path "$bundleSrc\*" -DestinationPath $zipDest -CompressionLevel Optimal
+          $mb = [math]::Round((Get-Item $zipDest).Length / 1MB, 1)
+          Write-Host "bundle.zip: $mb MB"
+
+      - name: Build gitsync.exe
+        shell: pwsh
+        working-directory: launcher
+        run: |
+          go build -o gitsync.exe -ldflags="-s -w" .
+          $mb = [math]::Round((Get-Item 'gitsync.exe').Length / 1MB, 1)
+          Write-Host "gitsync.exe: $mb MB"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitsync-exe
+          path: launcher/gitsync.exe
+          if-no-files-found: error
+          # Уже сжатый exe — не перепаковываем
+          compression-level: 0
