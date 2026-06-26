@@ -1,0 +1,7 @@
+{
+  "v8version": "8.3.27.1989",
+  "connection": "tcp://host/repo",
+  "db-user": "Имя Пользователя",
+  "db-pwd": "пароль",
+  "gitsync-workdir": "src/cf"
+}

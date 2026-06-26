@@ -1,1 +1,5 @@
 * text=auto
+
+*.ps1  text eol=crlf
+*.os   text eol=lf
+*.json text eol=lf

@@ -24,11 +24,11 @@ param(
     [switch]$UseRegistry
 )
 
-$utf8 = [System.Text.Encoding]::UTF8
+$utf8 = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = $utf8
 [Console]::InputEncoding  = $utf8
 [Console]::OutputEncoding = $utf8
-chcp 65001 > $null
+chcp 65001 | Out-Null
 
 $ErrorActionPreference = 'Stop'
 
@@ -127,7 +127,13 @@ Invoke-Step "Патчим ПодключениеПлагиновКаталога
         throw "Файл для патча не найден: $patchTarget"
     }
 
-    $lines = [System.IO.File]::ReadAllLines($patchTarget, [System.Text.Encoding]::UTF8)
+    # Читаем файл, сохраняя оригинальный разделитель строк и избегая добавления BOM
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $rawBytes  = [System.IO.File]::ReadAllBytes($patchTarget)
+    $newLine   = if ($rawBytes -contains [byte]0x0D) { "`r`n" } else { "`n" }
+    $content   = [System.IO.File]::ReadAllText($patchTarget, $utf8NoBom)
+    $lines     = $content.TrimEnd("`r`n").Split(
+                     [string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
 
     if ($lines | Where-Object { $_.TrimStart() -eq 'Попытка' }) {
         Write-Host "Патч уже применён ранее, пропускаем."
@@ -151,7 +157,8 @@ Invoke-Step "Патчим ПодключениеПлагиновКаталога
         $result.Add("$lead" + "КонецПопытки;")
         foreach ($ln in $lines[($idx + 2)..($lines.Length - 1)]) { $result.Add($ln) }
 
-        [System.IO.File]::WriteAllLines($patchTarget, $result, [System.Text.Encoding]::UTF8)
+        # Записываем с сохранением оригинальных переносов строк и без BOM
+        [System.IO.File]::WriteAllText($patchTarget, ($result -join $newLine) + $newLine, $utf8NoBom)
         Write-Host "Патч применён."
     }
 }
@@ -225,7 +232,7 @@ Invoke-Step "Устанавливаем плагины в oscript_modules..." {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Шаблоны gitsync.ps1 и env.ps1
+# 4. Шаблоны gitsync.ps1 и .vrunner.json.example
 # ---------------------------------------------------------------------------
 Invoke-Step "Копируем файлы запуска в проект..." {
     $RepoBase = if ($PSScriptRoot) { $PSScriptRoot } else { $null }
@@ -247,12 +254,21 @@ Invoke-Step "Копируем файлы запуска в проект..." {
     }
 
     Copy-Template 'gitsync.ps1'
-    Copy-Template 'env.ps1'
+    Copy-Template '.vrunner.json.example'
+
+    # Добавить .vrunner.json в .gitignore проекта, если его там нет
+    $gitignorePath = Join-Path $ProjectRoot '.gitignore'
+    $ignoreEntry   = '.vrunner.json'
+    if (-not (Test-Path $gitignorePath) -or
+        -not ((Get-Content $gitignorePath -Raw) -match '(?m)^\s*\.vrunner\.json\s*$')) {
+        Add-Content $gitignorePath "`n$ignoreEntry"
+        Write-Host "Добавлен $ignoreEntry в .gitignore"
+    }
 
     Write-Host ""
-    Write-Host "  -> Заполните в env.ps1: GITSYNC_STORAGE_PATH, GITSYNC_STORAGE_USER, GITSYNC_STORAGE_PASSWORD, GITSYNC_V8VERSION"
+    Write-Host "  -> Скопируйте .vrunner.json.example в .vrunner.json и заполните настройки подключения."
 }
 
 # ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "Готово. Заполните env.ps1 и запускайте .\gitsync.ps1"
+Write-Host "Готово. Заполните .vrunner.json и запускайте .\gitsync.ps1"

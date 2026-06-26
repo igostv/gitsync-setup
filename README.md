@@ -5,7 +5,7 @@
 Устанавливает:
 - gitsync из форка с поддержкой приоритизации плагинов ([PR #364](https://github.com/oscript-library/gitsync/pull/364))
 - плагин [МержВетки](https://github.com/igostv/gitsync-plugin-merge-branch)
-- шаблоны `gitsync.ps1` и `env.ps1` в корень проекта
+- шаблон `gitsync.ps1` и пример настроек `.vrunner.json.example` в корень проекта
 
 > После того как PR #364 влит в основной gitsync и опубликован в hub.oscript.io, используйте флаг `-UseRegistry`.
 
@@ -34,14 +34,21 @@ cd gitsync-setup
 
 ## После установки
 
-Заполните в `env.ps1`:
+Скопируйте `.vrunner.json.example` в `.vrunner.json` и заполните настройки подключения:
 
-```powershell
-$env:GITSYNC_STORAGE_PATH = 'tcp://host/repo'
-$env:GITSYNC_STORAGE_USER = 'Имя Пользователя'
-$env:GITSYNC_STORAGE_PASSWORD = 'пароль'
-$env:GITSYNC_V8VERSION = '8.3.27.1989'
+```json
+{
+  "v8version": "8.3.27.1989",
+  "connection": "tcp://host/repo",
+  "db-user": "Имя Пользователя",
+  "db-pwd": "пароль",
+  "gitsync-workdir": "src/cf"
+}
 ```
+
+Файл `.vrunner.json` автоматически добавляется в `.gitignore` — пароли не попадут в репозиторий.
+
+Формат совместим с [vanessa-runner](https://github.com/Pr-Mex/vanessa-runner) и расширениями VS Code для 1С (Yellow Hummer 1C Tools и аналоги).
 
 Затем запускайте синхронизацию:
 
